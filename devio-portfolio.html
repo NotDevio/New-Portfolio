@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Devio — Server Manager & Web Developer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+  :root {
+    --bg-base: #08090f;
+    --bg-surface: #0e101a;
+    --bg-card: #12151f;
+    --bg-card-hover: #161a27;
+    --border: rgba(255,255,255,0.07);
+    --border-accent: rgba(99,130,255,0.35);
+    --blue: #6382ff;
+    --blue-light: #8aa0ff;
+    --blue-dim: rgba(99,130,255,0.12);
+    --blue-glow: rgba(99,130,255,0.2);
+    --green: #4ade80;
+    --green-dim: rgba(74,222,128,0.1);
+    --red: #f87171;
+    --red-dim: rgba(248,113,113,0.1);
+    --amber: #fbbf24;
+    --text-primary: #f0f2ff;
+    --text-secondary: #8892b0;
+    --text-muted: #4a5170;
+  }
+
+  * { scrollbar-width: thin; scrollbar-color: var(--blue) var(--bg-surface); box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-surface); }
+  ::-webkit-scrollbar-thumb { background: var(--blue); border-radius: 999px; }
+
+  body {
+    background-color: var(--bg-base);
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text-primary);
+    min-height: 100vh;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Noise texture overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+
+  /* ── Ambient glow blobs ── */
+  .blob {
+    position: fixed; border-radius: 50%; filter: blur(120px);
+    pointer-events: none; z-index: 0; opacity: 0.18;
+  }
+  .blob-1 { width: 600px; height: 600px; top: -200px; left: -150px; background: var(--blue); }
+  .blob-2 { width: 400px; height: 400px; bottom: 100px; right: -100px; background: #7b5ea7; }
+
+  .content-wrapper { position: relative; z-index: 1; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  }
+  .card:hover {
+    border-color: var(--border-accent);
+    box-shadow: 0 0 0 1px var(--border-accent), 0 20px 48px rgba(0,0,0,0.4);
+  }
+  .card-animated {
+    opacity: 0; transform: translateY(24px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .card-animated.visible { opacity: 1; transform: translateY(0); }
+
+  /* ── Experience cards with left accent ── */
+  .exp-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--blue);
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+  }
+  .exp-card:hover {
+    background: var(--bg-card-hover);
+    border-left-color: var(--blue-light);
+    transform: translateX(4px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+  }
+
+  /* ── Tabs ── */
+  .tab-btn {
+    position: relative; background: transparent;
+    border: 1px solid var(--border); color: var(--text-secondary);
+    padding: 0.55rem 1.25rem; border-radius: 10px;
+    font-size: 0.875rem; font-weight: 500; cursor: pointer;
+    transition: all 0.25s ease; white-space: nowrap;
+  }
+  .tab-btn:hover { color: var(--blue-light); border-color: var(--border-accent); }
+  .tab-btn.active {
+    background: var(--blue-dim);
+    color: var(--blue-light);
+    border-color: var(--border-accent);
+    box-shadow: 0 0 16px var(--blue-glow);
+  }
+
+  /* ── Status badges ── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 0.3rem 0.75rem; border-radius: 8px;
+    font-size: 0.78rem; font-weight: 600; letter-spacing: 0.01em;
+  }
+  .badge-active { background: var(--green-dim); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+  .badge-resigned { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+  .badge-closed { background: rgba(251,191,36,0.08); color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+
+  .badge-active::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--green); animation: pulse-dot 2s infinite; }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── Meta chips ── */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--blue-dim); border: 1px solid var(--border-accent);
+    color: var(--blue-light); padding: 0.25rem 0.65rem; border-radius: 6px;
+    font-size: 0.78rem; font-weight: 500;
+  }
+
+  /* ── Skills ── */
+  .skill-tag {
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    color: var(--text-secondary); padding: 0.35rem 0.8rem; border-radius: 8px;
+    font-size: 0.8rem; font-weight: 500;
+    transition: all 0.2s ease; cursor: default;
+  }
+  .skill-tag:hover {
+    background: var(--blue-dim); border-color: var(--border-accent);
+    color: var(--blue-light);
+  }
+
+  /* ── Social buttons ── */
+  .social-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    color: var(--text-secondary); padding: 0.6rem 1rem; border-radius: 10px;
+    text-decoration: none; font-size: 0.875rem; font-weight: 500;
+    transition: all 0.2s ease;
+  }
+  .social-btn:hover {
+    background: var(--blue-dim); border-color: var(--border-accent);
+    color: var(--blue-light); transform: translateY(-2px);
+  }
+
+  /* ── Primary button ── */
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--blue); color: white; padding: 0.7rem 1.5rem; border: none;
+    border-radius: 10px; font-weight: 600; font-size: 0.9rem; cursor: pointer;
+    transition: all 0.2s ease; box-shadow: 0 4px 20px var(--blue-glow);
+  }
+  .btn-primary:hover { background: var(--blue-light); transform: translateY(-2px); box-shadow: 0 8px 28px var(--blue-glow); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* ── Form inputs ── */
+  .form-input {
+    width: 100%; background: var(--bg-surface); border: 1px solid var(--border);
+    color: var(--text-primary); padding: 0.75rem 1rem; border-radius: 10px;
+    font-size: 0.875rem; font-family: inherit; resize: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .form-input::placeholder { color: var(--text-muted); }
+  .form-input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-dim); }
+
+  /* ── Section title ── */
+  .section-title {
+    font-size: 1.5rem; font-weight: 700; color: var(--text-primary);
+    margin-bottom: 1.5rem;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section-title::before {
+    content: ''; display: inline-block; width: 4px; height: 1.5em;
+    background: var(--blue); border-radius: 2px; flex-shrink: 0;
+  }
+
+  /* ── Group header ── */
+  .group-header {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--text-muted); margin: 0.5rem 0 1rem;
+  }
+  .group-header::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* ── Mono font ── */
+  .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; }
+
+  /* ── Avatar glow ring ── */
+  .avatar-ring {
+    padding: 3px;
+    background: linear-gradient(135deg, var(--blue), #7b5ea7);
+    border-radius: 20px;
+    box-shadow: 0 0 40px var(--blue-glow);
+  }
+
+  /* ── Link hover ── */
+  .text-link {
+    color: var(--blue-light); text-decoration: none;
+    transition: color 0.2s ease;
+  }
+  .text-link:hover { color: white; text-decoration: underline; }
+
+  /* ── Selectable ── */
+  .selectable, .selectable * { user-select: text; }
+
+  /* ── About bullet ── */
+  .about-bullet {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 0.75rem 1rem; border-radius: 10px;
+    background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+    transition: all 0.2s ease;
+  }
+  .about-bullet:hover { background: var(--blue-dim); border-color: var(--border-accent); }
+  .about-bullet-icon { color: var(--blue); margin-top: 2px; flex-shrink: 0; }
+
+  /* ── Closed server mini card ── */
+  .mini-card {
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem; text-align: center;
+    transition: all 0.2s ease;
+  }
+  .mini-card:hover { border-color: var(--border-accent); background: var(--bg-card); }
+
+  /* ── Page fade ── */
+  .page { animation: pageIn 0.35s ease; }
+  @keyframes pageIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+  /* ── Form status ── */
+  .form-status {
+    padding: 0.875rem 1rem; border-radius: 10px; font-size: 0.875rem;
+    font-weight: 500; margin-top: 0.75rem; text-align: center;
+    display: none;
+  }
+  .form-status.success { background: var(--green-dim); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+  .form-status.error { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+  .form-status.show { display: block; }
+
+  /* ── Divider ── */
+  .divider { height: 1px; background: var(--border); margin: 1.5rem 0; }
+
+  /* ── Responsive utilities ── */
+  @media (max-width: 768px) {
+    .avatar-ring { border-radius: 16px; }
+  }
+
+  /* ── Timeline line for experience ── */
+  .experience-list { display: flex; flex-direction: column; gap: 1rem; }
+</style>
+</head>
+
+<body>
+  <!-- Ambient blobs -->
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <div class="content-wrapper max-w-5xl mx-auto px-5 py-10 md:py-14">
+
+    <!-- ═══════════════════════════════════════════ HEADER ══ -->
+    <header class="mb-12 card-animated">
+      <div class="card p-6 md:p-8">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+
+          <!-- Identity -->
+          <div class="flex items-center gap-5">
+            <div class="avatar-ring flex-shrink-0">
+              <div class="w-20 h-20 md:w-24 md:h-24 rounded-[14px] bg-[var(--bg-surface)] overflow-hidden">
+                <img src="Images/pfp.webp" alt="Devio's profile picture"
+                  class="w-full h-full object-cover"
+                  onerror="this.outerHTML='<div class=\'w-full h-full flex items-center justify-center text-3xl\'>🎮</div>'">
+              </div>
+            </div>
+            <div>
+              <h1 class="text-3xl md:text-4xl font-bold tracking-tight" style="color:var(--text-primary)">Devio</h1>
+              <p class="mt-1 text-sm md:text-base" style="color:var(--text-secondary)">Server Manager &amp; Web Developer</p>
+              <div class="flex items-center gap-2 mt-2">
+                <span class="badge badge-active">Available for work</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Nav tabs -->
+          <nav class="flex flex-wrap gap-2" role="tablist" aria-label="Portfolio sections">
+            <button id="btn-about"      class="tab-btn active" role="tab" aria-selected="true"  aria-controls="page-about">About</button>
+            <button id="btn-experience" class="tab-btn"        role="tab" aria-selected="false" aria-controls="page-experience">Experience</button>
+            <button id="btn-contact"    class="tab-btn"        role="tab" aria-selected="false" aria-controls="page-contact">Contact</button>
+          </nav>
+        </div>
+      </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════ BODY GRID ══ -->
+    <div class="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 items-start">
+
+      <!-- ───────── SIDEBAR ───────── -->
+      <aside class="md:sticky md:top-8 flex flex-col gap-4">
+
+        <!-- Contact card -->
+        <div class="card p-5 card-animated" style="animation-delay:0.05s">
+          <h2 class="text-xs font-bold uppercase tracking-widest mb-4" style="color:var(--text-muted)">
+            <i class="fas fa-address-card mr-2" style="color:var(--blue)"></i>Contact Info
+          </h2>
+          <div class="space-y-3 text-sm">
+            <div>
+              <p style="color:var(--text-muted)">Email</p>
+              <p class="font-mono text-sm selectable mt-0.5" style="color:var(--text-primary)">DyvoBXN@gmail.com</p>
+            </div>
+            <div>
+              <p style="color:var(--text-muted)">Timezone</p>
+              <p class="font-semibold mt-0.5" style="color:var(--text-primary)"><span id="currentTime">—</span> <span style="color:var(--text-muted)">GMT+2</span></p>
+            </div>
+            <div>
+              <p style="color:var(--text-muted)">Languages</p>
+              <p class="font-semibold mt-0.5" style="color:var(--text-primary)">English · Arabic · Hebrew</p>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Social -->
+          <div class="flex flex-col gap-2">
+            <a href="https://discordapp.com/users/1139581194497970296" target="_blank" rel="noopener" class="social-btn">
+              <i class="fab fa-discord"></i> Discord
+            </a>
+            <a href="https://namemc.com/profile/NotDevio.1" target="_blank" rel="noopener" class="social-btn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="2" y="2" width="9" height="9" rx="1.5"/><rect x="13" y="2" width="9" height="9" rx="1.5"/><rect x="2" y="13" width="9" height="9" rx="1.5"/><rect x="13" y="13" width="9" height="9" rx="1.5"/></svg>
+              NameMC
+            </a>
+          </div>
+        </div>
+
+        <!-- Skills card -->
+        <div class="card p-5 card-animated" style="animation-delay:0.1s">
+          <h2 class="text-xs font-bold uppercase tracking-widest mb-4" style="color:var(--text-muted)">
+            <i class="fas fa-layer-group mr-2" style="color:var(--blue)"></i>Skills
+          </h2>
+          <div class="flex flex-wrap gap-2">
+            <span class="skill-tag">C# / ASPX / XAML</span>
+            <span class="skill-tag">HTML / CSS / JS</span>
+            <span class="skill-tag">Discord Management</span>
+            <span class="skill-tag">Server Administration</span>
+            <span class="skill-tag">Plugin Knowledge</span>
+            <span class="skill-tag">Team Leadership</span>
+            <span class="skill-tag">Community Building</span>
+            <span class="skill-tag">CoreProtect</span>
+          </div>
+        </div>
+
+        <!-- Stats mini card -->
+        <div class="card p-5 card-animated" style="animation-delay:0.15s">
+          <h2 class="text-xs font-bold uppercase tracking-widest mb-4" style="color:var(--text-muted)">
+            <i class="fas fa-chart-bar mr-2" style="color:var(--blue)"></i>At a Glance
+          </h2>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="text-center p-3 rounded-xl" style="background:var(--blue-dim)">
+              <p class="text-2xl font-bold" style="color:var(--blue-light)">5+</p>
+              <p class="text-xs mt-1" style="color:var(--text-muted)">Years Active</p>
+            </div>
+            <div class="text-center p-3 rounded-xl" style="background:var(--blue-dim)">
+              <p class="text-2xl font-bold" style="color:var(--blue-light)">10+</p>
+              <p class="text-xs mt-1" style="color:var(--text-muted)">Servers</p>
+            </div>
+            <div class="text-center p-3 rounded-xl col-span-2" style="background:var(--blue-dim)">
+              <p class="text-2xl font-bold" style="color:var(--blue-light)">2020</p>
+              <p class="text-xs mt-1" style="color:var(--text-muted)">Started staffing</p>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- ───────── MAIN CONTENT ───────── -->
+      <main>
+
+        <!-- ══ ABOUT PAGE ══ -->
+        <div id="page-about" class="page space-y-5">
+
+          <div class="card p-6 card-animated" style="animation-delay:0.2s">
+            <h2 class="section-title">About Me</h2>
+            <p class="leading-relaxed mb-5" style="color:var(--text-secondary)">
+              Hey, I'm <strong style="color:var(--text-primary)">Devio</strong> — a 17-year-old server manager and web developer focused on building thriving online communities. Since May 2020, I've been helping Minecraft servers and Discord communities grow through thoughtful moderation, clean setups, and genuine effort.
+            </p>
+
+            <div class="space-y-2">
+              <div class="about-bullet">
+                <i class="fas fa-shield-alt about-bullet-icon text-sm"></i>
+                <div>
+                  <p class="font-semibold text-sm" style="color:var(--text-primary)">Server Administration</p>
+                  <p class="text-sm" style="color:var(--text-secondary)">Hands-on experience across Lifesteal, EarthSMP, BoxSMP, Survival and more</p>
+                </div>
+              </div>
+              <div class="about-bullet">
+                <i class="fab fa-discord about-bullet-icon text-sm"></i>
+                <div>
+                  <p class="font-semibold text-sm" style="color:var(--text-primary)">Discord Setup & Moderation</p>
+                  <p class="text-sm" style="color:var(--text-secondary)">Building organized servers with clear workflows, bots, and moderation systems</p>
+                </div>
+              </div>
+              <div class="about-bullet">
+                <i class="fas fa-code about-bullet-icon text-sm"></i>
+                <div>
+                  <p class="font-semibold text-sm" style="color:var(--text-primary)">Web Development</p>
+                  <p class="text-sm" style="color:var(--text-secondary)">C#, ASPX, XAML, and front-end projects for community tools and portfolio sites</p>
+                </div>
+              </div>
+              <div class="about-bullet">
+                <i class="fas fa-users about-bullet-icon text-sm"></i>
+                <div>
+                  <p class="font-semibold text-sm" style="color:var(--text-primary)">Leadership & Coordination</p>
+                  <p class="text-sm" style="color:var(--text-secondary)">Coordinating staff teams, onboarding helpers, and keeping operations running smoothly</p>
+                </div>
+              </div>
+              <div class="about-bullet">
+                <i class="fas fa-search about-bullet-icon text-sm"></i>
+                <div>
+                  <p class="font-semibold text-sm" style="color:var(--text-primary)">Competitive Analysis</p>
+                  <p class="text-sm" style="color:var(--text-secondary)">Identifying strengths and weaknesses in competing servers to improve player retention</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick CTA -->
+          <div class="card p-5 card-animated" style="animation-delay:0.25s; border-color: var(--border-accent); background: var(--blue-dim);">
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <p class="font-semibold" style="color:var(--text-primary)">Looking to hire?</p>
+                <p class="text-sm mt-0.5" style="color:var(--text-secondary)">I'm open to new server manager positions.</p>
+              </div>
+              <button onclick="switchTab('contact')" class="btn-primary flex-shrink-0">
+                <i class="fas fa-paper-plane"></i> Get in touch
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ══ EXPERIENCE PAGE ══ -->
+        <div id="page-experience" class="page space-y-5 hidden">
+
+          <!-- Currently Active -->
+          <div class="card p-6 card-animated">
+            <div class="group-header"><i class="fas fa-circle text-[var(--green)]" style="font-size:8px"></i> Currently Active</div>
+            <div class="experience-list">
+
+              <!-- AzryxMC -->
+              <article class="exp-card card-animated">
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <h3 class="text-base font-bold" style="color:var(--text-primary)">AzryxMC</h3>
+                  <span class="badge badge-active flex-shrink-0">Active</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                  <span class="chip"><i class="fas fa-star fa-xs"></i> Moderator</span>
+                  <span class="chip"><i class="fas fa-gamepad fa-xs"></i> LifeSteal</span>
+                  <span class="chip"><i class="fas fa-calendar fa-xs"></i> Oct 26, 2025 – Present</span>
+                  <span class="chip"><i class="fas fa-users fa-xs"></i> ~3 players avg</span>
+                </div>
+                <p class="text-sm mb-3" style="color:var(--text-secondary)">Assisting with pre-release preparations — testing features, providing feedback, organizing staff workflows, and helping keep the community space clean and ready for launch.</p>
+                <div class="flex flex-wrap gap-4 text-xs" style="color:var(--text-muted)">
+                  <a href="https://discord.gg/AzryxMC" target="_blank" rel="noopener" class="text-link selectable"><i class="fab fa-discord mr-1"></i>discord.gg/AzryxMC</a>
+                  <span class="mono selectable">play.azryxmc.fun</span>
+                </div>
+              </article>
+
+            </div>
+          </div>
+
+          <!-- Previous Experience -->
+          <div class="card p-6 card-animated">
+            <div class="group-header"><i class="fas fa-history" style="font-size:10px"></i> Previous Experience</div>
+            <div class="experience-list">
+
+              <!-- HeartsSMP -->
+              <article class="exp-card card-animated">
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <h3 class="text-base font-bold" style="color:var(--text-primary)">HeartsSMP</h3>
+                  <span class="badge badge-resigned flex-shrink-0">Resigned</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                  <span class="chip">Innovator Manager</span>
+                  <span class="chip"><i class="fas fa-gamepad fa-xs"></i> LifeSteal</span>
+                  <span class="chip"><i class="fas fa-calendar fa-xs"></i> Jan 1, 2026 – Present</span>
+                  <span class="chip"><i class="fas fa-users fa-xs"></i> 50–60 players avg</span>
+                </div>
+                <p class="text-sm mb-3" style="color:var(--text-secondary)">Analyzed competing Minecraft servers to identify strengths and weaknesses, and proposed meaningful improvements focused on player retention and gameplay flow.</p>
+                <div class="flex flex-wrap gap-4 text-xs" style="color:var(--text-muted)">
+                  <a href="https://discord.gg/bKg9Vy3qFx" target="_blank" rel="noopener" class="text-link selectable"><i class="fab fa-discord mr-1"></i>discord.gg/HeartsSMP</a>
+                  <span class="mono selectable">Play.heartsmp.net</span>
+                </div>
+              </article>
+
+              <!-- FreshSMP -->
+              <article class="exp-card card-animated">
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <h3 class="text-base font-bold" style="color:var(--text-primary)">FreshSMP</h3>
+                  <span class="badge badge-resigned flex-shrink-0">Resigned</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                  <span class="chip">Junior Moderator</span>
+                  <span class="chip"><i class="fas fa-gamepad fa-xs"></i> LifeSteal · Survival · SkyBlock</span>
+                  <span class="chip"><i class="fas fa-calendar fa-xs"></i> Dec 6, 2025 – Feb 2, 2026</span>
+                  <span class="chip"><i class="fas fa-users fa-xs"></i> 600–700 players</span>
+                </div>
+                <p class="text-sm mb-3" style="color:var(--text-secondary)">Gained familiarity with CoreProtect and developed skills in catching rule breakers through evidence-based moderation across multiple game modes.</p>
+                <div class="flex flex-wrap gap-4 text-xs" style="color:var(--text-muted)">
+                  <a href="https://discord.gg/Freshsmp" target="_blank" rel="noopener" class="text-link selectable"><i class="fab fa-discord mr-1"></i>discord.gg/FreshSMP</a>
+                  <span class="mono selectable">play.freshsmp.fun</span>
+                </div>
+              </article>
+
+              <!-- OreBound -->
+              <article class="exp-card card-animated">
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <h3 class="text-base font-bold" style="color:var(--text-primary)">OreBound Network</h3>
+                  <span class="badge badge-resigned flex-shrink-0">Resigned</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                  <span class="chip">Helper</span>
+                  <span class="chip"><i class="fas fa-gamepad fa-xs"></i> GrowAnOre</span>
+                  <span class="chip"><i class="fas fa-calendar fa-xs"></i> Dec 6, 2025 – Feb 2, 2026</span>
+                  <span class="chip"><i class="fas fa-users fa-xs"></i> ~10 players avg</span>
+                </div>
+                <p class="text-sm mb-3" style="color:var(--text-secondary)">Handled player reports, supported the community, and worked alongside the staff team to keep the BoxSMP server running smoothly.</p>
+                <div class="flex flex-wrap gap-4 text-xs" style="color:var(--text-muted)">
+                  <a href="https://discord.gg/Taw7x83sz8" target="_blank" rel="noopener" class="text-link selectable"><i class="fab fa-discord mr-1"></i>discord.gg/OreBound</a>
+                  <span class="mono selectable">OreBound.net</span>
+                </div>
+              </article>
+
+              <!-- RuneMC -->
+              <article class="exp-card card-animated">
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <h3 class="text-base font-bold" style="color:var(--text-primary)">RuneMC</h3>
+                  <span class="badge badge-resigned flex-shrink-0">Resigned</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                  <span class="chip">Moderator</span>
+                  <span class="chip"><i class="fas fa-gamepad fa-xs"></i> Earth SMP</span>
+                  <span class="chip"><i class="fas fa-calendar fa-xs"></i> Sep 17, 2024 – Jan 24, 2026</span>
+                  <span class="chip"><i class="fas fa-users fa-xs"></i> ~10 players avg</span>
+                </div>
+                <p class="text-sm mb-3" style="color:var(--text-secondary)">First EarthSMP staffing experience. Managed player issues, kept the community organized, and ensured a fair gameplay environment.</p>
+                <div class="flex flex-wrap gap-4 text-xs" style="color:var(--text-muted)">
+                  <span class="mono selectable">rune-mc.net</span>
+                </div>
+              </article>
+
+              <!-- Gemstone -->
+              <article class="exp-card card-animated">
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <h3 class="text-base font-bold" style="color:var(--text-primary)">Gemstone</h3>
+                  <span class="badge badge-resigned flex-shrink-0" style="background:rgba(251,191,36,0.08);color:var(--amber);border-color:rgba(251,191,36,0.2);">Disbanded</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                  <span class="chip">Moderator</span>
+                  <span class="chip"><i class="fas fa-gamepad fa-xs"></i> LifeSteal</span>
+                  <span class="chip"><i class="fas fa-calendar fa-xs"></i> May 16, 2024 – Dec 9, 2025</span>
+                </div>
+                <p class="text-sm mb-3" style="color:var(--text-secondary)">Improved command knowledge across both Minecraft and Discord. Staff team was later disbanded by ownership.</p>
+                <div class="flex flex-wrap gap-4 text-xs" style="color:var(--text-muted)">
+                  <a href="https://discord.gg/Gemstone" target="_blank" rel="noopener" class="text-link selectable"><i class="fab fa-discord mr-1"></i>discord.gg/Gemstone</a>
+                  <span class="mono selectable">play.gemstone.gg</span>
+                </div>
+              </article>
+
+              <!-- Stranded -->
+              <article class="exp-card card-animated">
+                <div class="flex items-start justify-between gap-3 mb-3">
+                  <h3 class="text-base font-bold" style="color:var(--text-primary)">Stranded</h3>
+                  <span class="badge badge-resigned flex-shrink-0">Resigned</span>
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                  <span class="chip">Support</span>
+                  <span class="chip"><i class="fas fa-gamepad fa-xs"></i> Box SMP</span>
+                  <span class="chip"><i class="fas fa-calendar fa-xs"></i> Mar 26 – Apr 2, 2025</span>
+                  <span class="chip"><i class="fas fa-users fa-xs"></i> ~50 players avg</span>
+                </div>
+                <p class="text-sm mb-3" style="color:var(--text-secondary)">Short-term support role — provided community assistance for one week before resigning.</p>
+                <div class="flex flex-wrap gap-4 text-xs" style="color:var(--text-muted)">
+                  <a href="https://discord.gg/Stranded" target="_blank" rel="noopener" class="text-link selectable"><i class="fab fa-discord mr-1"></i>discord.gg/Stranded</a>
+                  <span class="mono selectable">stranded.lol</span>
+                </div>
+              </article>
+
+            </div>
+          </div>
+
+          <!-- Closed Servers -->
+          <div class="card p-6 card-animated">
+            <div class="group-header"><i class="fas fa-archive" style="font-size:10px"></i> Closed Servers</div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="mini-card">
+                <p class="font-bold text-sm mb-1" style="color:var(--text-primary)">TyreSMP</p>
+                <p class="text-xs mb-1" style="color:var(--blue-light)">Sr. Moderator</p>
+                <p class="text-xs mb-2" style="color:var(--text-muted)">Survival · 20–30</p>
+                <span class="badge badge-closed" style="font-size:0.7rem">Shut Down</span>
+              </div>
+              <div class="mini-card">
+                <p class="font-bold text-sm mb-1" style="color:var(--text-primary)">CyclesMC</p>
+                <p class="text-xs mb-1" style="color:var(--blue-light)">Admin</p>
+                <p class="text-xs mb-2" style="color:var(--text-muted)">Survival · ~10</p>
+                <span class="badge badge-closed" style="font-size:0.7rem">Shut Down</span>
+              </div>
+              <div class="mini-card">
+                <p class="font-bold text-sm mb-1" style="color:var(--text-primary)">GatoSMP</p>
+                <p class="text-xs mb-1" style="color:var(--blue-light)">Co-Owner</p>
+                <p class="text-xs mb-2" style="color:var(--text-muted)">Survival · 20–30</p>
+                <span class="badge badge-closed" style="font-size:0.7rem">Shut Down</span>
+              </div>
+              <div class="mini-card">
+                <p class="font-bold text-sm mb-1" style="color:var(--text-primary)">HyperNovaSMP</p>
+                <p class="text-xs mb-1" style="color:var(--blue-light)">Sr. Moderator</p>
+                <p class="text-xs mb-2" style="color:var(--text-muted)">Survival · 20–30</p>
+                <span class="badge badge-closed" style="font-size:0.7rem">Shut Down</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ══ CONTACT PAGE ══ -->
+        <div id="page-contact" class="page space-y-5 hidden">
+
+          <div class="card p-6 card-animated">
+            <h2 class="section-title">Get In Touch</h2>
+            <p class="text-sm mb-6" style="color:var(--text-secondary)">
+              Want to hire me, collaborate, or just say hi? Send a message and I'll get back to you through Discord or email.
+            </p>
+
+            <form id="contactForm" class="space-y-4" novalidate>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label for="f-name" class="block text-xs font-semibold mb-1.5" style="color:var(--text-muted)">Your Name</label>
+                  <input id="f-name" name="name" type="text" placeholder="Alex" class="form-input selectable" autocomplete="name">
+                </div>
+                <div>
+                  <label for="f-subject" class="block text-xs font-semibold mb-1.5" style="color:var(--text-muted)">Subject <span style="color:var(--red)">*</span></label>
+                  <input id="f-subject" name="subject" type="text" placeholder="Staff application" class="form-input selectable" required>
+                </div>
+              </div>
+
+              <!-- Contact method -->
+              <div>
+                <p class="text-xs font-semibold mb-2" style="color:var(--text-muted)">Preferred contact method</p>
+                <div class="flex gap-3">
+                  <label class="flex items-center gap-2 cursor-pointer text-sm" style="color:var(--text-secondary)">
+                    <input type="radio" name="contactType" value="Discord" checked class="accent-[var(--blue)]" id="r-discord">
+                    <span>Discord</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer text-sm" style="color:var(--text-secondary)">
+                    <input type="radio" name="contactType" value="Email" class="accent-[var(--blue)]" id="r-email">
+                    <span>Email</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label for="f-contact" class="block text-xs font-semibold mb-1.5" style="color:var(--text-muted)">
+                  <span id="contactLabel">Discord username</span> <span style="color:var(--text-muted); font-weight:400">(optional)</span>
+                </label>
+                <input id="f-contact" name="contactValue" type="text" placeholder="username" class="form-input selectable" autocomplete="off">
+              </div>
+
+              <div>
+                <label for="f-message" class="block text-xs font-semibold mb-1.5" style="color:var(--text-muted)">Message <span style="color:var(--red)">*</span></label>
+                <textarea id="f-message" name="messageText" placeholder="Tell me about the server, the role, or your project..." rows="5" class="form-input selectable" required></textarea>
+              </div>
+
+              <button type="submit" id="submitBtn" class="btn-primary w-full">
+                <i class="fas fa-paper-plane"></i> Send Message
+              </button>
+            </form>
+
+            <div id="formStatus" class="form-status"></div>
+          </div>
+
+          <!-- Direct links -->
+          <div class="card p-5 card-animated" style="animation-delay:0.1s">
+            <p class="text-xs font-bold uppercase tracking-widest mb-3" style="color:var(--text-muted)">Or reach out directly</p>
+            <div class="flex flex-wrap gap-3">
+              <a href="https://discordapp.com/users/1139581194497970296" target="_blank" rel="noopener" class="social-btn">
+                <i class="fab fa-discord"></i> Discord Profile
+              </a>
+              <a href="mailto:DyvoBXN@gmail.com" class="social-btn selectable">
+                <i class="fas fa-envelope"></i> DyvoBXN@gmail.com
+              </a>
+            </div>
+          </div>
+
+        </div>
+
+      </main>
+    </div>
+
+    <!-- ── Footer ── -->
+    <footer class="mt-14 pt-6 border-t text-center text-xs" style="border-color:var(--border); color:var(--text-muted)">
+      © 2020–2025 Devio · Built with care
+    </footer>
+
+  </div><!-- /content-wrapper -->
+
+
+<script>
+/* ─── Time ─── */
+function updateTime() {
+  const t = new Intl.DateTimeFormat('en-US', { hour:'2-digit', minute:'2-digit', hour12:true }).format(new Date());
+  document.getElementById('currentTime').textContent = t;
+}
+updateTime(); setInterval(updateTime, 30000);
+
+/* ─── Tabs ─── */
+const PAGES = ['about','experience','contact'];
+function switchTab(id) {
+  PAGES.forEach(p => {
+    document.getElementById('page-'+p).classList.add('hidden');
+    document.getElementById('btn-'+p).classList.remove('active');
+    document.getElementById('btn-'+p).setAttribute('aria-selected','false');
+  });
+  document.getElementById('page-'+id).classList.remove('hidden');
+  document.getElementById('btn-'+id).classList.add('active');
+  document.getElementById('btn-'+id).setAttribute('aria-selected','true');
+  // Trigger card animations for newly visible cards
+  const cards = document.querySelectorAll('#page-'+id+' .card-animated:not(.visible)');
+  cards.forEach((c,i) => { setTimeout(() => c.classList.add('visible'), i * 60); });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+PAGES.forEach(p => document.getElementById('btn-'+p).addEventListener('click', () => switchTab(p)));
+
+/* ─── Scroll animations ─── */
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+}, { threshold: 0.1 });
+document.querySelectorAll('.card-animated').forEach(el => observer.observe(el));
+
+/* ─── Contact method toggle ─── */
+document.querySelectorAll('[name="contactType"]').forEach(r => {
+  r.addEventListener('change', () => {
+    const isDiscord = r.value === 'Discord';
+    document.getElementById('contactLabel').textContent = isDiscord ? 'Discord username' : 'Email address';
+    document.getElementById('f-contact').placeholder = isDiscord ? 'username' : 'you@email.com';
+    document.getElementById('f-contact').type = isDiscord ? 'text' : 'email';
+  });
+});
+
+/* ─── Contact form ─── */
+const WEBHOOK = "https://discord.com/api/webhooks/1469404735722360997/HhyGI9PpcLe25N4s-qx2eOa9jNgJjW1F68mDMuqONdv4LyFHZf-i0fvj1fwJSofkEVDB";
+const PING_ID = "1139581194497970296";
+const form = document.getElementById('contactForm');
+const statusEl = document.getElementById('formStatus');
+const submitBtn = document.getElementById('submitBtn');
+
+function showStatus(msg, type) {
+  statusEl.textContent = msg;
+  statusEl.className = 'form-status show ' + type;
+  if (type === 'success') setTimeout(() => { statusEl.className = 'form-status'; }, 6000);
+}
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const name    = form.name.value.trim();
+  const subject = form.subject.value.trim();
+  const cType   = [...document.querySelectorAll('[name="contactType"]')].find(r => r.checked).value;
+  const cValue  = form.contactValue.value.trim();
+  const msg     = form.messageText.value.trim();
+
+  if (!subject) return showStatus('Subject is required.', 'error');
+  if (!msg) return showStatus('Message is required.', 'error');
+  if (cType === 'Email' && cValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cValue))
+    return showStatus('Please enter a valid email address.', 'error');
+
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+
+  const embeds = [
+    { title: '👤 Name',    description: name    || 'Not provided', color: name    ? 0x6382ff : 0xff4444 },
+    { title: '📌 Subject', description: subject,                   color: 0x9b59b6 },
+    { title: `💬 ${cType}`,description: cValue  || 'Not provided', color: cValue  ? 0x2ecc71 : 0xff4444 },
+    { title: '📝 Message', description: msg,                       color: 0xe67e22 }
+  ];
+
+  try {
+    await fetch(WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: `<@${PING_ID}>`, embeds })
+    });
+    showStatus('✅ Message sent! I\'ll get back to you soon.', 'success');
+    form.reset();
+    document.getElementById('contactLabel').textContent = 'Discord username';
+    document.getElementById('f-contact').placeholder = 'username';
+  } catch {
+    showStatus('❌ Failed to send. Please try again or reach out directly.', 'error');
+  }
+
+  submitBtn.disabled = false;
+  submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Message';
+});
+</script>
+</body>
+</html>
